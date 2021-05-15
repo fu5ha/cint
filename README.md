@@ -5,7 +5,7 @@
 
 ## Introduction
 
-This library is a lean, minimal, and stable set of types
+This library provides a lean, minimal, and stable set of types
 for color interoperation between crates in Rust. Its goal is to serve the same
 function that [`mint`](https://docs.rs/mint/) provides for (linear algebra) math types.
 It does not actually provide any conversion, math, etc. for these types, but rather

@@ -1,10 +1,12 @@
-//! This library is a lean, minimal, and stable set of types
+//! # `cint` - `c`olor `int`erop
+//!
+//! This library provides a lean, minimal, and stable set of types
 //! for color interoperation between crates in Rust. Its goal is to serve the same
 //! function that [`mint`](https://docs.rs/mint/) provides for (linear algebra) math types.
 //! It does not actually provide any conversion, math, etc. for these types, but rather
 //! serves as a stable interface that multiple libraries can rely on and then convert
 //! to their own internal representations to actually use. It is also `#![no_std]`.
-//! [`bytemuck`][https://docs.rs/bytemuck/] impls are provided with the `bytemuck` feature.
+//! [`bytemuck`](https://docs.rs/bytemuck/) impls are provided with the `bytemuck` feature.
 //!
 //! # How to Use
 //!
@@ -14,27 +16,65 @@
 //! If you have a color that you loaded from an 8-bit format like a PNG, JPG, etc.,
 //! **or** if you have a color that you picked from some sort of online color picker
 //! or in Photoshop or Aseprite, then what you have is almost certainly an [`EncodedSrgb<u8>`]
-//! color (or if it has an alpha channel, [`EncodedSrgbA<u8>`]). If you have a color that you loaded
+//! color. If you have a color that you loaded
 //! from a similar format but has floating point values instead of `u8` ints, then you
-//! almost certainly instead have a [`EncodedSrgb<f32>`] color (or [`EncodedSrgbA<f32>`] if it
-//! has an alpha channel).
+//! almost certainly instead have a [`EncodedSrgb<f32>`] color.
 //!
 //! If you "linearized" or performed "inverse gamma correction" on such a color, then you instead
-//! might have a [`LinearSrgb<f32>`]/[`LinearSrgbA<f32>`].
+//! might have a [`LinearSrgb<f32>`].
 //!
 //! If you are more familiar with color encoding, then you'll find a collection of other color spaces
-//! represented, as well as the generic [`GenericColor<T>`]/[`GenericColorAlpha<T>`] types which
+//! represented, as well as the generic [`GenericColor<ComponentTy>`] type which
 //! can be used if the color space you wish to use is not represented.
 //!
 //! ## Colors with alpha channels
 //!
-//! Note that colors with alpha channels are paramaterized not only by their `ComponentTy` (i.e.
-//! `f32`, `u8`, etc.), but also by an `AlphaState`. This should be one of [`Premultiplied`]
-//! or [`Separate`] and
+//! `cint` provides the [`ColorAlpha<ComponentTy, ColorTy>`] and [`PremultipliedColorAlpha<ComponentTy, ColorTy>`]
+//! structs, which are generic over both `ComponentTy` and `ColorTy`.
+//! To represent an [`EncodedSrgb<u8>`] color with a premultiplied alpha component,
+//! you'd use [`PremultipliedColorAlpha<u8, EncodedSrgb<u8>>`]. If, on the other hand, you want to represent
+//! an [`Oklab<f32>`] color with an independent alpha component, you'd use [`ColorAlpha<f32, Oklab<f32>>`]
 #![no_std]
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+/// A color with an alpha component.
+///
+/// The color components and alpha component are completely separate.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
+pub struct ColorAlpha<ComponentTy, ColorTy> {
+    /// The contained color, which is completely separate from the `alpha` value.
+    pub color: ColorTy,
+    /// The alpha component.
+    pub alpha: ComponentTy,
+}
+
+#[cfg(feature = "bytemuck")]
+unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable
+    for ColorAlpha<ComponentTy, ColorTy>
+{
+}
+#[cfg(feature = "bytemuck")]
+unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for ColorAlpha<ComponentTy, ColorTy> {}
+
+/// A premultiplied color with an alpha component.
+///
+/// The color components have been premultiplied by the alpha component.
+#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
+pub struct PremultipliedColorAlpha<ComponentTy, ColorTy> {
+    /// The contained color, which has been premultiplied with `alpha`
+    pub color: ColorTy,
+    /// The alpha component.
+    pub alpha: ComponentTy,
+}
+
+#[cfg(feature = "bytemuck")]
+unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable
+    for PremultipliedColorAlpha<ComponentTy, ColorTy>
+{
+}
+#[cfg(feature = "bytemuck")]
+unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for PremultipliedColorAlpha<ComponentTy, ColorTy> {}
 
 macro_rules! color_struct {
     {
@@ -80,60 +120,44 @@ macro_rules! color_struct {
                 unsafe { &*(self as *const $name<ComponentTy> as *const [ComponentTy; 3]) }
             }
         }
-    };
-    {
-        $(#[$doc:meta])*
-        $name:ident, $alphaname:ident {
-            $($(#[$compdoc:meta])+
-            $compname:ident,)+
-        }
-    } => {
-        color_struct! {
-            $(#[$doc])*
-            $name {
-                $($(#[$compdoc])+
-                $compname,)+
+
+        macro_rules! impl_alpha_traits {
+            ($alphaty:ident) => {
+                impl<ComponentTy> From<$alphaty<ComponentTy, $name<ComponentTy>>> for $name<ComponentTy> {
+                    fn from(col_alpha: $alphaty<ComponentTy, $name<ComponentTy>>) -> $name<ComponentTy> {
+                        col_alpha.color
+                    }
+                }
+
+                impl<ComponentTy> From<[ComponentTy; 4]> for $alphaty<ComponentTy, $name<ComponentTy>> {
+                    fn from([a, b, c, alpha]: [ComponentTy; 4]) -> $alphaty<ComponentTy, $name<ComponentTy>> {
+                        $alphaty {
+                            color: $name::from([a, b, c]),
+                            alpha
+                        }
+                    }
+                }
+
+                #[allow(clippy::from_over_into)]
+                impl<ComponentTy> Into<[ComponentTy; 4]> for $alphaty<ComponentTy, $name<ComponentTy>> {
+                    fn into(self) -> [ComponentTy; 4] {
+                        let $alphaty {
+                            color,
+                            alpha
+                        } = self;
+
+                        let $name {
+                            $($compname,)+
+                        } = color;
+
+                        [$($compname,)+ alpha]
+                    }
+                }
             }
         }
 
-        $(#[$doc])*
-        ///
-        /// This is type has an alpha channel, and so is paramaterized by both
-        /// a `ComponentTy`, as with any color type, but also an `AlphaState`,
-        /// which symbolizes whether the other color components have been
-        /// [`Premultiplied`] with the alpha channel or are [`Separate`] from it.
-        #[repr(C)]
-        #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-        pub struct $alphaname<ComponentTy, AlphaState> {
-            $($(#[$compdoc])+
-            pub $compname: ComponentTy,)+
-            /// The alpha component.
-            pub alpha: ComponentTy,
-            _pd: core::marker::PhantomData<AlphaState>,
-        }
-
-        #[cfg(feature = "bytemuck")]
-        unsafe impl<ComponentTy: Zeroable, AlphaState> Zeroable for $alphaname<ComponentTy, AlphaState> {}
-        #[cfg(feature = "bytemuck")]
-        unsafe impl<ComponentTy: Pod, AlphaState: Copy + 'static> Pod for $alphaname<ComponentTy, AlphaState> {}
-
-        #[allow(clippy::from_over_into)]
-        impl<ComponentTy, AlphaState> Into<[ComponentTy; 4]> for $alphaname<ComponentTy, AlphaState> {
-            fn into(self) -> [ComponentTy; 4] {
-                let $alphaname {
-                    $($compname,)+
-                    alpha,
-                    ..
-                } = self;
-                [$($compname,)+ alpha]
-            }
-        }
-
-        impl<ComponentTy, AlphaState> AsRef<[ComponentTy; 4]> for $alphaname<ComponentTy, AlphaState> {
-            fn as_ref(&self) -> &[ComponentTy; 4] {
-                unsafe { &*(self as *const $alphaname<ComponentTy, AlphaState> as *const [ComponentTy; 4]) }
-            }
-        }
+        impl_alpha_traits!(ColorAlpha);
+        impl_alpha_traits!(PremultipliedColorAlpha);
     };
 }
 
@@ -143,7 +167,7 @@ color_struct! {
     /// This color space uses the sRGB/Rec.709 primaries, D65 white point,
     /// and sRGB transfer functions. The encoded version is nonlinear, with the
     /// sRGB OETF, aka "gamma compensation", applied.
-    EncodedSrgb, EncodedSrgbA {
+    EncodedSrgb {
         /// The red component.
         r,
         /// The green component.
@@ -160,7 +184,7 @@ color_struct! {
     /// and sRGB transfer functions. This version is linear, with the
     /// sRGB EOTF, aka "inverse gamma compensation", applied in order to
     /// decode it from [`EncodedSrgb`]
-    LinearSrgb, LinearSrgbA {
+    LinearSrgb {
         /// The red component.
         r,
         /// The green component.
@@ -205,7 +229,7 @@ color_struct! {
 color_struct! {
     /// A color in a generic color space that can be represented by 3 components. The user
     /// is responsible for ensuring that the correct color space is respected.
-    GenericColor, GenericColorAlpha {
+    GenericColor {
         /// The first component.
         comp1,
         /// The second component.
@@ -280,7 +304,7 @@ color_struct! {
     /// This color space uses the P3 primaries and D65 white point
     /// and sRGB transfer functions. This version is linear,
     /// without the sRGB OETF applied.
-    DisplayP3, DisplayP3A {
+    DisplayP3 {
         /// The red component.
         r,
         /// The green component.
@@ -296,7 +320,7 @@ color_struct! {
     /// This color space uses the P3 primaries and D65 white point
     /// and sRGB transfer functions. This encoded version is nonlinear,
     /// with the sRGB OETF applied.
-    EncodedDisplayP3, EncodedDisplayP3A {
+    EncodedDisplayP3 {
         /// The red component.
         r,
         /// The green component.
@@ -452,7 +476,7 @@ color_struct! {
     /// A color in the CIE XYZ color space.
     ///
     /// This color space uses the CIE XYZ primaries and D65 white point.
-    CieXYZ, CieXYZA {
+    CieXYZ {
         /// The X component.
         x,
         /// The Y component.
@@ -464,7 +488,7 @@ color_struct! {
 
 color_struct! {
     /// A color in the CIE L\*a\*b color space.
-    CieLab, CieLabA {
+    CieLab {
         /// The L (lightness) component. Varies from 0 to 100.
         l,
         /// The a component, representing green-red chroma difference.
@@ -476,7 +500,7 @@ color_struct! {
 
 color_struct! {
     /// A color in the CIE L\*C\*h color space.
-    CieLCh, CieLChA {
+    CieLCh {
         /// The L (lightness) component. Varies from 0 to 100.
         l,
         /// The C (chroma) component. Varies from 0 to a hue dependent maximum.
@@ -488,7 +512,7 @@ color_struct! {
 
 color_struct! {
     /// A color in the Oklab color space.
-    Oklab, OklabA {
+    Oklab {
         /// The L (lightness) component. Varies from 0 to 1
         l,
         /// The a component, representing green-red chroma difference.
@@ -500,7 +524,7 @@ color_struct! {
 
 color_struct! {
     /// A color in the Oklch color space (a transformation from Oklab to L\*c\*h coordinates).
-    Oklch, OklchA {
+    Oklch {
         /// The L (lightness) component. Varies from 0 to 1.
         l,
         /// The C (chroma) component. Varies from 0 to a hue dependent maximum.
@@ -509,15 +533,3 @@ color_struct! {
         h,
     }
 }
-
-/// Symbolizes that a color's component values have been premultiplied with its alpha channel.
-///
-/// Used to paramaterize colors with alpha channels alongside [Separate].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Premultiplied {}
-
-/// Symbolizes that a color's component values are separate from its alpha channel.
-///
-/// Used to paramaterize colors with alpha channels alongside [Premultiplied].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Separate {}
