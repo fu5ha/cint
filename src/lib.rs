@@ -50,10 +50,7 @@ pub struct Alpha<ComponentTy, ColorTy> {
 }
 
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable
-    for Alpha<ComponentTy, ColorTy>
-{
-}
+unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable for Alpha<ComponentTy, ColorTy> {}
 #[cfg(feature = "bytemuck")]
 unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for Alpha<ComponentTy, ColorTy> {}
 
