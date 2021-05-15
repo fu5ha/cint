@@ -11,7 +11,7 @@ function that [`mint`](https://docs.rs/mint/) provides for (linear algebra) math
 It does not actually provide any conversion, math, etc. for these types, but rather
 serves as a stable interface that multiple libraries can rely on and then convert
 to their own internal representations to actually use. It is also `#![no_std]`. See
-[the docs](https://termhn.github.io/cint/cint/) for more.
+[the docs](https://docs.rs/cint) for more.
 
 ## License
 
