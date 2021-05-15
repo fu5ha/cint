@@ -29,11 +29,11 @@
 //!
 //! ## Colors with alpha channels
 //!
-//! `cint` provides the [`ColorAlpha<ComponentTy, ColorTy>`] and [`PremultipliedColorAlpha<ComponentTy, ColorTy>`]
+//! `cint` provides the [`Alpha<ComponentTy, ColorTy>`] and [`PremultipliedAlpha<ComponentTy, ColorTy>`]
 //! structs, which are generic over both `ComponentTy` and `ColorTy`.
 //! To represent an [`EncodedSrgb<u8>`] color with a premultiplied alpha component,
-//! you'd use [`PremultipliedColorAlpha<u8, EncodedSrgb<u8>>`]. If, on the other hand, you want to represent
-//! an [`Oklab<f32>`] color with an independent alpha component, you'd use [`ColorAlpha<f32, Oklab<f32>>`]
+//! you'd use [`PremultipliedAlpha<u8, EncodedSrgb<u8>>`]. If, on the other hand, you want to represent
+//! an [`Oklab<f32>`] color with an independent alpha component, you'd use [`Alpha<f32, Oklab<f32>>`]
 #![no_std]
 
 #[cfg(feature = "bytemuck")]
@@ -42,7 +42,7 @@ use bytemuck::{Pod, Zeroable};
 ///
 /// The color components and alpha component are completely separate.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct ColorAlpha<ComponentTy, ColorTy> {
+pub struct Alpha<ComponentTy, ColorTy> {
     /// The contained color, which is completely separate from the `alpha` value.
     pub color: ColorTy,
     /// The alpha component.
@@ -51,17 +51,17 @@ pub struct ColorAlpha<ComponentTy, ColorTy> {
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable
-    for ColorAlpha<ComponentTy, ColorTy>
+    for Alpha<ComponentTy, ColorTy>
 {
 }
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for ColorAlpha<ComponentTy, ColorTy> {}
+unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for Alpha<ComponentTy, ColorTy> {}
 
 /// A premultiplied color with an alpha component.
 ///
 /// The color components have been premultiplied by the alpha component.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct PremultipliedColorAlpha<ComponentTy, ColorTy> {
+pub struct PremultipliedAlpha<ComponentTy, ColorTy> {
     /// The contained color, which has been premultiplied with `alpha`
     pub color: ColorTy,
     /// The alpha component.
@@ -70,11 +70,11 @@ pub struct PremultipliedColorAlpha<ComponentTy, ColorTy> {
 
 #[cfg(feature = "bytemuck")]
 unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable
-    for PremultipliedColorAlpha<ComponentTy, ColorTy>
+    for PremultipliedAlpha<ComponentTy, ColorTy>
 {
 }
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for PremultipliedColorAlpha<ComponentTy, ColorTy> {}
+unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for PremultipliedAlpha<ComponentTy, ColorTy> {}
 
 macro_rules! color_struct {
     {
@@ -156,8 +156,8 @@ macro_rules! color_struct {
             }
         }
 
-        impl_alpha_traits!(ColorAlpha);
-        impl_alpha_traits!(PremultipliedColorAlpha);
+        impl_alpha_traits!(Alpha);
+        impl_alpha_traits!(PremultipliedAlpha);
     };
 }
 
