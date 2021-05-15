@@ -27,6 +27,23 @@
 //! represented, as well as the generic [`GenericColor<ComponentTy>`] type which
 //! can be used if the color space you wish to use is not represented.
 //!
+//! The [ColorInterop] trait exists to provide a "canonical" transformation to and from `cint` types.
+//! Since it is often possible to convert a color to and from multiple `cint` types, and because of
+//! how the Rust type inference system works, it can often be inconvenient to chain together `from`
+//! or `into` calls from the [From]/[Into] trait. [ColorInterop] solves this by providing a strongly
+//! typed "reference" conversion to/from `cint` types. This way, you can do things like:
+//!
+//! ```rust
+//! let color_crate1 = color_crate2.into_cint().into();
+//! // or
+//! let color_crate2 = ColorCrate2::from_cint(color_crate1.into());
+//! ```
+//!
+//! which would otherwise be quite inconvenient. **Provider crates** (those that provide their own color
+//! types) should implement the relevant [`From`]/[`Into`] implementations to and from `cint` types, and
+//! also the [ColorInterop] trait once for each color type. The [`into_cint`][ColorInterop::into_cint] and
+//! [`from_cint`][ColorInterop::from_cint] methods will then be provided automatically.
+//!
 //! ## Colors with alpha channels
 //!
 //! `cint` provides the [`Alpha<ColorTy>`] and [`PremultipliedAlpha<ColorTy>`]
@@ -42,6 +59,28 @@ use bytemuck::{Pod, Zeroable};
 /// A trait used to simpify the interface of the [`Alpha`] and [`PremultipliedAlpha`] types.
 pub trait ColorStruct {
     type ComponentTy: Clone + Copy;
+}
+
+/// A trait that should be implemented by provider crates on their local color types so that you can call
+/// `color.to_cint()` and `Color::from_cint(cint_color)`.
+///
+/// Provider crates should also do relevant `From`/`Into` impls, but [`ColorInterop`] provides a "canonical"
+/// transformation to the closest `cint` color type.
+pub trait ColorInterop
+where
+    Self: Into<Self::CintTy>,
+{
+    type CintTy: Into<Self>;
+
+    /// Convert `self` into its canonical `cint` type.
+    fn from_cint(col: Self::CintTy) -> Self {
+        col.into()
+    }
+
+    /// Create a `Self` from its canonical `cint` type.
+    fn into_cint(self) -> Self::CintTy {
+        self.into()
+    }
 }
 
 /// A color with an alpha component.
