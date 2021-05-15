@@ -1,7 +1,7 @@
 # `cint` - `c`olor `int`erop
 
-[![crates.io](http://meritbadge.herokuapp.com/colstodian)](https://crates.io/crates/colstodian)
-[![docs.rs](https://docs.rs/colstodian/badge.svg)](https://docs.rs/colstodian)
+[![crates.io](http://meritbadge.herokuapp.com/cint)](https://crates.io/crates/cint)
+[![docs.rs](https://docs.rs/cint/badge.svg)](https://docs.rs/cint)
 
 ## Introduction
 
