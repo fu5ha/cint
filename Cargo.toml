@@ -1,0 +1,18 @@
+[package]
+name = "cint"
+version = "0.1.0"
+authors = ["Gray Olson <gray@grayolson.com>"]
+edition = "2018"
+license = "MIT OR Apache-2.0 OR Zlib"
+description = "A lean, minimal, and stable set of types for color interoperation between crates in Rust."
+documentation = "https://docs.rs/cint"
+homepage = "https://github.com/termhn/cint"
+repository = "https://github.com/termhn/cint"
+
+[package.metadata.docs.rs]
+features = ["bytemuck"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bytemuck = { version = "1.5.1", optional = true }
