@@ -487,7 +487,7 @@ color_struct! {
 }
 
 color_struct! {
-    /// A color in the CIE L\*a\*b color space.
+    /// A color in the CIE L\*a\*b\* color space.
     CieLab {
         /// The L (lightness) component. Varies from 0 to 100.
         l,
@@ -499,7 +499,7 @@ color_struct! {
 }
 
 color_struct! {
-    /// A color in the CIE L\*C\*h color space.
+    /// A color in the CIE L\*C\*h° color space.
     CieLCh {
         /// The L (lightness) component. Varies from 0 to 100.
         l,
@@ -523,7 +523,7 @@ color_struct! {
 }
 
 color_struct! {
-    /// A color in the Oklch color space (a transformation from Oklab to L\*c\*h coordinates).
+    /// A color in the Oklch color space (a transformation from Oklab to LCh° coordinates).
     Oklch {
         /// The L (lightness) component. Varies from 0 to 1.
         l,
@@ -531,5 +531,37 @@ color_struct! {
         c,
         /// The h (hue) component. Varies from -PI to PI.
         h,
+    }
+}
+
+color_struct! {
+    /// A color in the HSL color space.
+    ///
+    /// Since HSL is a relative color space, it is required to know the RGB space which
+    /// it was transformed from. We define this as the linear sRGB space, as that is
+    /// the most common case.
+    Hsl {
+        /// The H (hue) component. Varies from 0 to 1.
+        h,
+        /// The S (saturation) component. Varies from 0 to 1.
+        s,
+        /// The L (lightness) component. Varies from 0 to 1.
+        l,
+    }
+}
+
+color_struct! {
+    /// A color in the HSV color space.
+    ///
+    /// Since HSV is a relative color space, it is required to know the RGB space which
+    /// it was transformed from. We define this as the linear sRGB space, as that is
+    /// the most common case.
+    Hsv {
+        /// The H (hue) component. Varies from 0 to 1.
+        h,
+        /// The S (saturation) component. Varies from 0 to 1.
+        s,
+        /// The V (value) component. Varies from 0 to 1.
+        v,
     }
 }
