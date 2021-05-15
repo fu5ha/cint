@@ -29,49 +29,53 @@
 //!
 //! ## Colors with alpha channels
 //!
-//! `cint` provides the [`Alpha<ComponentTy, ColorTy>`] and [`PremultipliedAlpha<ComponentTy, ColorTy>`]
-//! structs, which are generic over both `ComponentTy` and `ColorTy`.
+//! `cint` provides the [`Alpha<ColorTy>`] and [`PremultipliedAlpha<ColorTy>`]
+//! structs, which are generic over the inner `ColorTy`.
 //! To represent an [`EncodedSrgb<u8>`] color with a premultiplied alpha component,
-//! you'd use [`PremultipliedAlpha<u8, EncodedSrgb<u8>>`]. If, on the other hand, you want to represent
-//! an [`Oklab<f32>`] color with an independent alpha component, you'd use [`Alpha<f32, Oklab<f32>>`]
+//! you'd use [`PremultipliedAlpha<EncodedSrgb<u8>>`]. If, on the other hand, you want to represent
+//! an [`Oklab<f32>`] color with an independent alpha component, you'd use [`Alpha<Oklab<f32>>`]
 #![no_std]
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
+
+/// A trait used to simpify the interface of the [`Alpha`] and [`PremultipliedAlpha`] types.
+pub trait ColorStruct {
+    type ComponentTy: Clone + Copy;
+}
+
 /// A color with an alpha component.
 ///
 /// The color components and alpha component are completely separate.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Alpha<ComponentTy, ColorTy> {
+pub struct Alpha<ColorTy: ColorStruct> {
     /// The contained color, which is completely separate from the `alpha` value.
     pub color: ColorTy,
     /// The alpha component.
-    pub alpha: ComponentTy,
+    pub alpha: ColorTy::ComponentTy,
 }
 
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable for Alpha<ComponentTy, ColorTy> {}
+unsafe impl<ColorTy: ColorStruct + Zeroable> Zeroable for Alpha<ColorTy> {}
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for Alpha<ComponentTy, ColorTy> {}
+unsafe impl<ColorTy: ColorStruct + Pod> Pod for Alpha<ColorTy> {}
 
 /// A premultiplied color with an alpha component.
 ///
 /// The color components have been premultiplied by the alpha component.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct PremultipliedAlpha<ComponentTy, ColorTy> {
+pub struct PremultipliedAlpha<ColorTy: ColorStruct> {
     /// The contained color, which has been premultiplied with `alpha`
     pub color: ColorTy,
     /// The alpha component.
-    pub alpha: ComponentTy,
+    pub alpha: ColorTy::ComponentTy,
 }
 
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Zeroable, ColorTy: Zeroable> Zeroable
-    for PremultipliedAlpha<ComponentTy, ColorTy>
-{
-}
+unsafe impl<ColorTy: ColorStruct + Zeroable> Zeroable for PremultipliedAlpha<ColorTy> {}
 #[cfg(feature = "bytemuck")]
-unsafe impl<ComponentTy: Pod, ColorTy: Pod> Pod for PremultipliedAlpha<ComponentTy, ColorTy> {}
+unsafe impl<ColorTy: ColorStruct + Pod> Pod for PremultipliedAlpha<ColorTy> {}
+
 
 macro_rules! color_struct {
     {
@@ -87,6 +91,10 @@ macro_rules! color_struct {
         pub struct $name<ComponentTy> {
             $($(#[$compdoc])+
             pub $compname: ComponentTy,)+
+        }
+
+        impl<CTy: Clone + Copy> ColorStruct for $name<CTy> {
+            type ComponentTy = CTy;
         }
 
         #[cfg(feature = "bytemuck")]
@@ -120,14 +128,14 @@ macro_rules! color_struct {
 
         macro_rules! impl_alpha_traits {
             ($alphaty:ident) => {
-                impl<ComponentTy> From<$alphaty<ComponentTy, $name<ComponentTy>>> for $name<ComponentTy> {
-                    fn from(col_alpha: $alphaty<ComponentTy, $name<ComponentTy>>) -> $name<ComponentTy> {
+                impl<ComponentTy: Clone + Copy> From<$alphaty<$name<ComponentTy>>> for $name<ComponentTy> {
+                    fn from(col_alpha: $alphaty<$name<ComponentTy>>) -> $name<ComponentTy> {
                         col_alpha.color
                     }
                 }
 
-                impl<ComponentTy> From<[ComponentTy; 4]> for $alphaty<ComponentTy, $name<ComponentTy>> {
-                    fn from([a, b, c, alpha]: [ComponentTy; 4]) -> $alphaty<ComponentTy, $name<ComponentTy>> {
+                impl<ComponentTy: Clone + Copy> From<[ComponentTy; 4]> for $alphaty<$name<ComponentTy>> {
+                    fn from([a, b, c, alpha]: [ComponentTy; 4]) -> $alphaty<$name<ComponentTy>> {
                         $alphaty {
                             color: $name::from([a, b, c]),
                             alpha
@@ -136,7 +144,7 @@ macro_rules! color_struct {
                 }
 
                 #[allow(clippy::from_over_into)]
-                impl<ComponentTy> Into<[ComponentTy; 4]> for $alphaty<ComponentTy, $name<ComponentTy>> {
+                impl<ComponentTy: Clone + Copy> Into<[ComponentTy; 4]> for $alphaty<$name<ComponentTy>> {
                     fn into(self) -> [ComponentTy; 4] {
                         let $alphaty {
                             color,
