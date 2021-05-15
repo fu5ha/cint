@@ -76,7 +76,6 @@ unsafe impl<ColorTy: ColorStruct + Zeroable> Zeroable for PremultipliedAlpha<Col
 #[cfg(feature = "bytemuck")]
 unsafe impl<ColorTy: ColorStruct + Pod> Pod for PremultipliedAlpha<ColorTy> {}
 
-
 macro_rules! color_struct {
     {
         $(#[$doc:meta])*
