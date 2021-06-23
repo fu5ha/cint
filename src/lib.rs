@@ -68,7 +68,7 @@ pub trait ColorStruct {
 /// transformation to the closest `cint` color type.
 pub trait ColorInterop
 where
-    Self: Into<Self::CintTy>,
+    Self: Into<<Self as ColorInterop>::CintTy>,
 {
     type CintTy: Into<Self>;
 
