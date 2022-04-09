@@ -15,4 +15,4 @@ features = ["bytemuck"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bytemuck = { version = "1.5.1", optional = true }
+bytemuck = { version = "1.9.0", optional = true }
