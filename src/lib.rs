@@ -195,7 +195,7 @@ macro_rules! color_struct {
                     fn from([$($compname,)+ alpha]: [ComponentTy; $num_components + 1]) -> $alphaty<$name<ComponentTy>> {
                         $alphaty {
                             color: $name::from([$($compname,)+]),
-                            alpha: alpha,
+                            alpha,
                         }
                     }
                 }
