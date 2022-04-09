@@ -24,13 +24,17 @@
 //! might have a [`LinearSrgb<f32>`].
 //!
 //! If you are more familiar with color encoding, then you'll find a collection of other color spaces
-//! represented, as well as the generic [`GenericColor<ComponentTy>`] type which
+//! represented, as well as the generic color types (like [`GenericColor3<ComponentTy>`]) which
 //! can be used if the color space you wish to use is not represented.
 //!
-//! The [ColorInterop] trait exists to provide a "canonical" transformation to and from `cint` types.
+//! All spaces are also collected into the [`Spaces`] enum, and you can get the variant represented
+//! by any of the concrete color types by taking advantage of the [`ColorType`]'s `SPACE` associated
+//! type, i.e. `EncodedSrgb::SPACE` will give `Spaces::EncodedSrgb`.
+//!
+//! The [`ColorInterop`] trait exists to provide a "canonical" transformation to and from `cint` types.
 //! Since it is often possible to convert a color to and from multiple `cint` types, and because of
 //! how the Rust type inference system works, it can often be inconvenient to chain together `from`
-//! or `into` calls from the [From]/[Into] trait. [ColorInterop] solves this by providing a strongly
+//! or `into` calls from the [From]/[Into] trait. [`ColorInterop`] solves this by providing a strongly
 //! typed "reference" conversion to/from `cint` types. This way, you can do things like:
 //!
 //! ```rust
@@ -52,13 +56,17 @@
 //! you'd use [`PremultipliedAlpha<EncodedSrgb<u8>>`]. If, on the other hand, you want to represent
 //! an [`Oklab<f32>`] color with an independent alpha component, you'd use [`Alpha<Oklab<f32>>`]
 #![no_std]
+#![allow(unsafe_code)]
 
 #[cfg(feature = "bytemuck")]
 use bytemuck::{Pod, Zeroable};
 
-/// A trait used to simpify the interface of the [`Alpha`] and [`PremultipliedAlpha`] types.
-pub trait ColorStruct {
-    type ComponentTy: Clone + Copy;
+/// A trait used to simpify the interface of the [`Alpha`] and [`PremultipliedAlpha`] types and
+/// allow use with [`Spaces`] enum.
+pub trait ColorType {
+    type ComponentTy: Copy;
+    const SPACE: Spaces;
+    const NUM_COMPONENTS: usize;
 }
 
 /// A trait that should be implemented by provider crates on their local color types so that you can call
@@ -86,8 +94,9 @@ where
 /// A color with an alpha component.
 ///
 /// The color components and alpha component are completely separate.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Alpha<ColorTy: ColorStruct> {
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[repr(C)]
+pub struct Alpha<ColorTy: ColorType> {
     /// The contained color, which is completely separate from the `alpha` value.
     pub color: ColorTy,
     /// The alpha component.
@@ -95,15 +104,15 @@ pub struct Alpha<ColorTy: ColorStruct> {
 }
 
 #[cfg(feature = "bytemuck")]
-unsafe impl<ColorTy: ColorStruct + Zeroable> Zeroable for Alpha<ColorTy> {}
+unsafe impl<ColorTy: ColorType + Zeroable> Zeroable for Alpha<ColorTy> {}
 #[cfg(feature = "bytemuck")]
-unsafe impl<ColorTy: ColorStruct + Pod> Pod for Alpha<ColorTy> {}
+unsafe impl<ColorTy: ColorType + Pod> Pod for Alpha<ColorTy> {}
 
 /// A premultiplied color with an alpha component.
 ///
 /// The color components have been premultiplied by the alpha component.
-#[derive(Clone, Copy, Debug, Hash, PartialEq, PartialOrd, Eq, Ord)]
-pub struct PremultipliedAlpha<ColorTy: ColorStruct> {
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct PremultipliedAlpha<ColorTy: ColorType> {
     /// The contained color, which has been premultiplied with `alpha`
     pub color: ColorTy,
     /// The alpha component.
@@ -111,14 +120,14 @@ pub struct PremultipliedAlpha<ColorTy: ColorStruct> {
 }
 
 #[cfg(feature = "bytemuck")]
-unsafe impl<ColorTy: ColorStruct + Zeroable> Zeroable for PremultipliedAlpha<ColorTy> {}
+unsafe impl<ColorTy: ColorType + Zeroable> Zeroable for PremultipliedAlpha<ColorTy> {}
 #[cfg(feature = "bytemuck")]
-unsafe impl<ColorTy: ColorStruct + Pod> Pod for PremultipliedAlpha<ColorTy> {}
+unsafe impl<ColorTy: ColorType + Pod> Pod for PremultipliedAlpha<ColorTy> {}
 
 macro_rules! color_struct {
     {
         $(#[$doc:meta])*
-        $name:ident<$default_component_ty:ty> {
+        $name:ident<$default_component_ty:ty, $num_components:literal> {
             $($(#[$compdoc:meta])+
             $compname:ident,)+
         }
@@ -131,8 +140,10 @@ macro_rules! color_struct {
             pub $compname: ComponentTy,)+
         }
 
-        impl<CTy: Clone + Copy> ColorStruct for $name<CTy> {
+        impl<CTy: Clone + Copy> ColorType for $name<CTy> {
             type ComponentTy = CTy;
+            const SPACE: Spaces = Spaces::$name;
+            const NUM_COMPONENTS: usize = $num_components;
         }
 
         #[cfg(feature = "bytemuck")]
@@ -140,8 +151,8 @@ macro_rules! color_struct {
         #[cfg(feature = "bytemuck")]
         unsafe impl<ComponentTy: Pod> Pod for $name<ComponentTy> {}
 
-        impl<ComponentTy> From<[ComponentTy; 3]> for $name<ComponentTy> {
-            fn from([$($compname),+]: [ComponentTy; 3]) -> $name<ComponentTy> {
+        impl<ComponentTy> From<[ComponentTy; $num_components]> for $name<ComponentTy> {
+            fn from([$($compname),+]: [ComponentTy; $num_components]) -> $name<ComponentTy> {
                 $name {
                     $($compname,)+
                 }
@@ -149,8 +160,8 @@ macro_rules! color_struct {
         }
 
         #[allow(clippy::from_over_into)]
-        impl<ComponentTy> Into<[ComponentTy; 3]> for $name<ComponentTy> {
-            fn into(self) -> [ComponentTy; 3] {
+        impl<ComponentTy> Into<[ComponentTy; $num_components]> for $name<ComponentTy> {
+            fn into(self) -> [ComponentTy; $num_components] {
                 let $name {
                     $($compname,)+
                 } = self;
@@ -158,32 +169,40 @@ macro_rules! color_struct {
             }
         }
 
-        impl<ComponentTy> AsRef<[ComponentTy; 3]> for $name<ComponentTy> {
-            fn as_ref(&self) -> &[ComponentTy; 3] {
-                unsafe { &*(self as *const $name<ComponentTy> as *const [ComponentTy; 3]) }
+        impl<ComponentTy> AsRef<[ComponentTy; $num_components]> for $name<ComponentTy> {
+            fn as_ref(&self) -> &[ComponentTy; $num_components] {
+                // SAFETY: same layout is guaranteed by repr C
+                unsafe { &*(self as *const $name<ComponentTy> as *const [ComponentTy; $num_components]) }
+            }
+        }
+
+        impl<ComponentTy> AsMut<[ComponentTy; $num_components]> for $name<ComponentTy> {
+            fn as_mut(&mut self) -> &mut [ComponentTy; $num_components] {
+                // SAFETY: same layout is guaranteed by repr C
+                unsafe { &mut *(self as *mut $name<ComponentTy> as *mut [ComponentTy; $num_components]) }
             }
         }
 
         macro_rules! impl_alpha_traits {
             ($alphaty:ident) => {
-                impl<ComponentTy: Clone + Copy> From<$alphaty<$name<ComponentTy>>> for $name<ComponentTy> {
+                impl<ComponentTy: Copy> From<$alphaty<$name<ComponentTy>>> for $name<ComponentTy> {
                     fn from(col_alpha: $alphaty<$name<ComponentTy>>) -> $name<ComponentTy> {
                         col_alpha.color
                     }
                 }
 
-                impl<ComponentTy: Clone + Copy> From<[ComponentTy; 4]> for $alphaty<$name<ComponentTy>> {
-                    fn from([a, b, c, alpha]: [ComponentTy; 4]) -> $alphaty<$name<ComponentTy>> {
+                impl<ComponentTy: Copy> From<[ComponentTy; $num_components + 1]> for $alphaty<$name<ComponentTy>> {
+                    fn from([$($compname,)+ alpha]: [ComponentTy; $num_components + 1]) -> $alphaty<$name<ComponentTy>> {
                         $alphaty {
-                            color: $name::from([a, b, c]),
-                            alpha
+                            color: $name::from([$($compname,)+]),
+                            alpha: alpha,
                         }
                     }
                 }
 
                 #[allow(clippy::from_over_into)]
-                impl<ComponentTy: Clone + Copy> Into<[ComponentTy; 4]> for $alphaty<$name<ComponentTy>> {
-                    fn into(self) -> [ComponentTy; 4] {
+                impl<ComponentTy: Copy> Into<[ComponentTy; $num_components + 1]> for $alphaty<$name<ComponentTy>> {
+                    fn into(self) -> [ComponentTy; $num_components + 1] {
                         let $alphaty {
                             color,
                             alpha
@@ -194,6 +213,20 @@ macro_rules! color_struct {
                         } = color;
 
                         [$($compname,)+ alpha]
+                    }
+                }
+
+                impl<ComponentTy: Copy> AsRef<[ComponentTy; $num_components + 1]> for $alphaty<$name<ComponentTy>> {
+                    fn as_ref(&self) -> &[ComponentTy; $num_components + 1] {
+                        // SAFETY: same layout is guaranteed by repr C
+                        unsafe { &*(self as *const $alphaty<$name<ComponentTy>> as *const [ComponentTy; $num_components + 1]) }
+                    }
+                }
+
+                impl<ComponentTy: Copy> AsMut<[ComponentTy; $num_components + 1]> for $alphaty<$name<ComponentTy>> {
+                    fn as_mut(&mut self) -> &mut [ComponentTy; $num_components + 1] {
+                        // SAFETY: same layout is guaranteed by repr C
+                        unsafe { &mut *(self as *mut $alphaty<$name<ComponentTy>> as *mut [ComponentTy; $num_components + 1]) }
                     }
                 }
             }
@@ -207,7 +240,7 @@ macro_rules! color_struct {
 macro_rules! color_spaces {
     {
         $($(#[$space_doc:meta])*
-        $space_name:ident<$default_component_ty:ty> {
+        $space_name:ident<$default_component_ty:ty, $num_components:literal> {
             $($(#[$comp_doc:meta])+
             $comp_name:ident,)+
         })*
@@ -216,6 +249,7 @@ macro_rules! color_spaces {
         /// supported by the library. Useful for tracking as metadata
         /// in something like an image type, and for runtime-determined color types.
         #[repr(u32)]
+        #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
         pub enum Spaces {
             $(
                 $(#[$space_doc])*
@@ -223,10 +257,20 @@ macro_rules! color_spaces {
             )*
         }
 
+        impl Spaces {
+            pub fn num_components(&self) -> usize {
+                match *self {
+                    $(
+                        Self::$space_name => $num_components,
+                    )*
+                }
+            }
+        }
+
         $(
             color_struct! {
                 $(#[$space_doc])*
-                $space_name<$default_component_ty> {
+                $space_name<$default_component_ty, $num_components> {
                     $( $(#[$comp_doc])+
                     $comp_name,)+
                 }
@@ -241,7 +285,7 @@ color_spaces! {
     /// This color space uses the sRGB/Rec.709 primaries, D65 white point,
     /// and sRGB transfer functions. The encoded version is nonlinear, with the
     /// sRGB OETF, aka "gamma compensation", applied.
-    EncodedSrgb<u8> {
+    EncodedSrgb<u8, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -256,7 +300,7 @@ color_spaces! {
     /// and sRGB transfer functions. This version is linear, with the
     /// sRGB EOTF, aka "inverse gamma compensation", applied in order to
     /// decode it from [`EncodedSrgb`]
-    LinearSrgb<f32> {
+    LinearSrgb<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -270,7 +314,7 @@ color_spaces! {
     /// This color space uses the BT.709 primaries, D65 white point,
     /// and BT.601 (reused in BT.709) transfer function. The encoded version is nonlinear, with the
     /// BT.601 OETF applied.
-    EncodedRec709<u8> {
+    EncodedRec709<u8, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -284,7 +328,7 @@ color_spaces! {
     /// This color space uses the BT.709 primaries, D65 white point,
     /// and BT.601 (reused in BT.709) transfer function. This version is linear, without the
     /// BT.601 OETF applied.
-    Rec709<f32> {
+    Rec709<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -295,7 +339,7 @@ color_spaces! {
 
     /// A color in a generic color space that can be represented by 3 components. The user
     /// is responsible for ensuring that the correct color space is respected.
-    GenericColor<f32> {
+    GenericColor3<f32, 3> {
         /// The first component.
         x,
         /// The second component.
@@ -304,10 +348,29 @@ color_spaces! {
         z,
     }
 
+    /// A color in a generic color space that can be represented by 1 component. The user
+    /// is responsible for ensuring that the correct color space is respected.
+    GenericColor1<f32, 1> {
+        /// The first component.
+        x,
+    }
+
+    /// A single-channel CIE luminance.
+    Luminance<f32, 1> {
+        /// CIE luminance.
+        l,
+    }
+
+    /// A single-channel CIE luma (non-linear transform from luminance).
+    Luma<f32, 1> {
+        /// CIE luminance.
+        l,
+    }
+
     /// A color in the ACEScg color space.
     ///
     /// This color space uses the ACES AP1 primaries and D60 white point.
-    AcesCg<f32> {
+    AcesCg<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -319,7 +382,7 @@ color_spaces! {
     /// A color in the ACES 2065-1 color space.
     ///
     /// This color space uses the ACES AP0 primaries and D60 white point.
-    Aces2065<f32> {
+    Aces2065<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -332,7 +395,7 @@ color_spaces! {
     ///
     /// This color space uses the ACES AP1 primaries and D60 white point
     /// and a pure logarithmic transfer function.
-    AcesCc<f32> {
+    AcesCc<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -346,7 +409,7 @@ color_spaces! {
     /// This color space uses the ACES AP1 primaries and D60 white point
     /// and a logarithmic transfer function with a toe such that values
     /// are able to go negative.
-    AcesCct<f32> {
+    AcesCct<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -360,7 +423,7 @@ color_spaces! {
     /// This color space uses the P3 primaries and D65 white point
     /// and sRGB transfer functions. This version is linear,
     /// without the sRGB OETF applied.
-    DisplayP3<f32> {
+    DisplayP3<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -374,7 +437,7 @@ color_spaces! {
     /// This color space uses the P3 primaries and D65 white point
     /// and sRGB transfer functions. This encoded version is nonlinear,
     /// with the sRGB OETF applied.
-    EncodedDisplayP3<u8> {
+    EncodedDisplayP3<u8, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -389,7 +452,7 @@ color_spaces! {
     /// [`DisplayP3`] instead.
     ///
     /// This color space uses the P3 primaries and D60 white point.
-    DciP3<f32> {
+    DciP3<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -401,7 +464,7 @@ color_spaces! {
     /// A color in the X'Y'Z' color space, a DCI specification used for digital cinema mastering.
     ///
     /// This color space uses the CIE XYZ primaries, with special DCI white point and pure 2.6 gamma encoding.
-    DciXYZPrime<f32> {
+    DciXYZPrime<f32, 3> {
         /// The X' component.
         x,
         /// The Y' component.
@@ -413,7 +476,7 @@ color_spaces! {
     /// A color in the BT.2020 color space.
     ///
     /// This color space uses the BT.2020 primaries and D65 white point.
-    Bt2020<f32> {
+    Bt2020<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -428,7 +491,7 @@ color_spaces! {
     /// the BT.2020 transfer functions (equivalent to BT.601 transfer functions
     /// but with higher precision). This encoded version is nonlinear, with the
     /// BT.2020/BT.601 OETF applied.
-    EncodedBt2020<f32> {
+    EncodedBt2020<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -440,7 +503,7 @@ color_spaces! {
     /// A color in the BT.2100 color space.
     ///
     /// This color space uses the BT.2020 primaries and D65 white point.
-    Bt2100<f32> {
+    Bt2100<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -454,7 +517,7 @@ color_spaces! {
     ///
     /// This color space uses the BT.2020 primaries and D65 white point and
     /// the ST 2084/"PQ" transfer function. It is nonlinear.
-    EncodedBt2100PQ<f32> {
+    EncodedBt2100PQ<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -468,7 +531,7 @@ color_spaces! {
     ///
     /// This color space uses the BT.2020 primaries and D65 white point and
     /// the HLG transfer function. It is nonlinear.
-    EncodedBt2100HLG<f32> {
+    EncodedBt2100HLG<f32, 3> {
         /// The red component.
         r,
         /// The green component.
@@ -483,7 +546,7 @@ color_spaces! {
     /// This color space is based on the BT.2020 primaries and D65 white point,
     /// but is not an RGB color space. Instead it is a roughly perceptual color
     /// space meant to more efficiently encode HDR content.
-    ICtCpPQ<f32> {
+    ICtCpPQ<f32, 3> {
         /// The I (intensity) component.
         i,
         /// The Ct (chroma-tritan) component.
@@ -498,7 +561,7 @@ color_spaces! {
     /// This color space is based on the BT.2020 primaries and D65 white point,
     /// but is not an RGB color space. Instead it is a roughly perceptual color
     /// space meant to more efficiently encode HDR content.
-    ICtCpHLG<f32> {
+    ICtCpHLG<f32, 3> {
         /// The I (intensity) component.
         i,
         /// The Ct (chroma-tritan) component.
@@ -510,7 +573,7 @@ color_spaces! {
     /// A color in the CIE XYZ color space.
     ///
     /// This color space uses the CIE XYZ primaries and D65 white point.
-    CieXYZ<f32> {
+    CieXYZ<f32, 3> {
         /// The X component.
         x,
         /// The Y component.
@@ -520,7 +583,7 @@ color_spaces! {
     }
 
     /// A color in the CIE L\*a\*b\* color space.
-    CieLab<f32> {
+    CieLab<f32, 3> {
         /// The L (lightness) component. Varies from 0 to 100.
         l,
         /// The a component, representing green-red chroma difference.
@@ -530,7 +593,7 @@ color_spaces! {
     }
 
     /// A color in the CIE L\*C\*h° color space.
-    CieLCh<f32> {
+    CieLCh<f32, 3> {
         /// The L (lightness) component. Varies from 0 to 100.
         l,
         /// The C (chroma) component. Varies from 0 to a hue dependent maximum.
@@ -540,7 +603,7 @@ color_spaces! {
     }
 
     /// A color in the Oklab color space.
-    Oklab<f32> {
+    Oklab<f32, 3> {
         /// The L (lightness) component. Varies from 0 to 1
         l,
         /// The a component, representing green-red chroma difference.
@@ -550,7 +613,7 @@ color_spaces! {
     }
 
     /// A color in the Oklch color space (a transformation from Oklab to LCh° coordinates).
-    Oklch<f32> {
+    Oklch<f32, 3> {
         /// The L (lightness) component. Varies from 0 to 1.
         l,
         /// The C (chroma) component. Varies from 0 to a hue dependent maximum.
@@ -564,7 +627,7 @@ color_spaces! {
     /// Since HSL is a relative color space, it is required to know the RGB space which
     /// it was transformed from. We define this as the linear sRGB space, as that is
     /// the most common case.
-    Hsl<f32> {
+    Hsl<f32, 3> {
         /// The H (hue) component. Varies from 0 to 1.
         h,
         /// The S (saturation) component. Varies from 0 to 1.
@@ -578,7 +641,7 @@ color_spaces! {
     /// Since HSV is a relative color space, it is required to know the RGB space which
     /// it was transformed from. We define this as the linear sRGB space, as that is
     /// the most common case.
-    Hsv<f32> {
+    Hsv<f32, 3> {
         /// The H (hue) component. Varies from 0 to 1.
         h,
         /// The S (saturation) component. Varies from 0 to 1.
@@ -591,8 +654,8 @@ color_spaces! {
     /// YPbPr in [YCbCr Wikipedia article](https://en.wikipedia.org/wiki/YCbCr)
     ///
     /// Since YCbCr is a relative color space, it is required to know the RGB space which
-    /// it was transformed from. A common base color space for YCbCr is 
-    YCbCr<u8> {
+    /// it was transformed from. We define this as being converted from the LinearSrgb color space.
+    YCbCr<u8, 3> {
         /// The Y (luminance) component.
         y,
         /// The Cb (chroma-blue/yellow) component.
@@ -601,10 +664,41 @@ color_spaces! {
         cr,
     }
 
-    /// A color in the YPbPr color space. See discussion of the difference between YCbCr, YUV, and
-    /// YPbPr in [YCbCr Wikipedia article](https://en.wikipedia.org/wiki/YCbCr)
-    YPbPr<f32> {
+    /// A color in the Y'CbCr color space. See discussion of the difference between YCbCr, Y'CbCr,
+    /// YUV, YPbPr, and Y'PbPr in the [YCbCr Wikipedia article](https://en.wikipedia.org/wiki/YCbCr)
+    ///
+    /// Since Y'CbCr is a relative color space, it is required to know the RGB space which
+    /// it was transformed from. We define this as being converted from the EncodedSrgb color space.
+    YPrimeCbCr<u8, 3> {
+        /// The Y' (luma) component.
+        y,
+        /// The Cb (chroma-blue/yellow) component.
+        cb,
+        /// The Cr (chroma-red/green) component.
+        cr,
+    }
+
+    /// A color in the YPbPr color space. See discussion of the difference between YCbCr,
+    /// YUV, YPbPr, and Y'PbPr in the [YCbCr Wikipedia article](https://en.wikipedia.org/wiki/YCbCr)
+    ///
+    /// Since YPbPr is a relative color space, it is required to know the RGB space which
+    /// it was transformed from. We define this as being converted from the LinearSrgb color space.
+    YPbPr<f32, 3> {
         /// The Y (luminance) component.
+        y,
+        /// The Pb (chroma-blue/yellow) component.
+        pb,
+        /// The Pr (chroma-red/green) component.
+        pr,
+    }
+
+    /// A color in the Y'PbPr color space. See discussion of the difference between YCbCr,
+    /// YUV, YPbPr, and Y'PbPr in the [YCbCr Wikipedia article](https://en.wikipedia.org/wiki/YCbCr)
+    ///
+    /// Since Y'PbPr is a relative color space, it is required to know the RGB space which
+    /// it was transformed from. We define this as being converted from the EncodedSrgb color space.
+    YPrimePbPr<f32, 3> {
+        /// The Y' (luma) component.
         y,
         /// The Pb (chroma-blue/yellow) component.
         pb,
@@ -614,7 +708,7 @@ color_spaces! {
 
     /// A color in the YUV color space. See discussion of the difference between YCbCr, YUV, and
     /// YPbPr in [YCbCr Wikipedia article](https://en.wikipedia.org/wiki/YCbCr)
-    Yuv<f32> {
+    Yuv<f32, 3> {
         /// The Y (luminance) component.
         y,
         /// The U (chroma-blue/yellow) component.
@@ -624,8 +718,9 @@ color_spaces! {
     }
 
     /// A color in the YCxCz (also called YyCxCz) color space, originally defined in "Optimized
-    /// universal color palette design for error diffusion" by B. W. Kolpatzik and C. A. Bouman. 
-    YCxCz<f32> {
+    /// universal color palette design for error diffusion" by B. W. Kolpatzik and C. A. Bouman.
+    /// Can be thought of as a "linear CIE Lab".
+    YCxCz<f32, 3> {
         /// The Yy (luminance) component.
         y,
         /// The Cx (chroma difference blue/yellow) component
