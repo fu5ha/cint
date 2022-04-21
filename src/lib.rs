@@ -103,6 +103,12 @@ pub struct Alpha<ColorTy: ColorType> {
     pub alpha: ColorTy::ComponentTy,
 }
 
+impl<BaseColorTy: ColorType> ColorType for Alpha<BaseColorTy> {
+    type ComponentTy = BaseColorTy::ComponentTy;
+    const SPACE: Spaces = BaseColorTy::SPACE;
+    const NUM_COMPONENTS: usize = BaseColorTy::NUM_COMPONENTS + 1;
+}
+
 #[cfg(feature = "bytemuck")]
 unsafe impl<ColorTy: ColorType + Zeroable> Zeroable for Alpha<ColorTy> {}
 #[cfg(feature = "bytemuck")]
