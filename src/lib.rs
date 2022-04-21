@@ -125,6 +125,12 @@ pub struct PremultipliedAlpha<ColorTy: ColorType> {
     pub alpha: ColorTy::ComponentTy,
 }
 
+impl<BaseColorTy: ColorType> ColorType for PremultipliedAlpha<BaseColorTy> {
+    type ComponentTy = BaseColorTy::ComponentTy;
+    const SPACE: Spaces = BaseColorTy::SPACE;
+    const NUM_COMPONENTS: usize = BaseColorTy::NUM_COMPONENTS + 1;
+}
+
 #[cfg(feature = "bytemuck")]
 unsafe impl<ColorTy: ColorType + Zeroable> Zeroable for PremultipliedAlpha<ColorTy> {}
 #[cfg(feature = "bytemuck")]
