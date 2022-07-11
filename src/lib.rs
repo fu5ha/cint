@@ -37,7 +37,7 @@
 //! or `into` calls from the [From]/[Into] trait. [`ColorInterop`] solves this by providing a strongly
 //! typed "reference" conversion to/from `cint` types. This way, you can do things like:
 //!
-//! ```rust
+//! ```rust,ignore
 //! let color_crate1 = color_crate2.into_cint().into();
 //! // or
 //! let color_crate2 = ColorCrate2::from_cint(color_crate1.into());
